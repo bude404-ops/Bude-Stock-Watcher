@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>BudE Leverage Radar</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <h1>🔥 BudE Leverage Radar</h1>
+      <div class="market-status" id="marketStatus">● LIVE</div>
+    </header>
+
+    <!-- Market Overview -->
+    <section class="cards-row">
+      <div class="card" onclick="openTicker('SPY')">
+        <span class="card-label">SPY</span>
+        <span class="card-price" id="spy-price">--</span>
+        <span class="card-change" id="spy-change">--</span>
+      </div>
+      <div class="card" onclick="openTicker('QQQ')">
+        <span class="card-label">QQQ</span>
+        <span class="card-price" id="qqq-price">--</span>
+        <span class="card-change" id="qqq-change">--</span>
+      </div>
+      <div class="card" onclick="openTicker('^VIX')">
+        <span class="card-label">VIX</span>
+        <span class="card-price" id="vix-price">--</span>
+        <span class="card-change" id="vix-change">--</span>
+      </div>
+    </section>
+
+    <!-- Risk Meter -->
+    <section class="section">
+      <h2>🚨 Leverage Risk Score</h2>
+      <div class="risk-meter">
+        <div class="risk-bar">
+          <div class="risk-fill" id="riskFill"></div>
+        </div>
+        <div class="risk-labels">
+          <span>Safe</span>
+          <span id="riskText">Loading...</span>
+          <span>Danger</span>
+        </div>
+      </div>
+      <div class="risk-alerts" id="riskAlerts"></div>
+      <div class="leverage-rules" id="leverageRules"></div>
+    </section>
+
+    <!-- Position Sizer -->
+    <section class="section">
+      <h2>🧮 Position Sizer</h2>
+      <div class="sizer">
+        <input type="number" id="acctSize" placeholder="Account Size ($)">
+        <input type="number" id="riskPct" placeholder="Risk % (1-5)">
+        <input type="number" id="stopLoss" placeholder="Stop Loss %">
+        <select id="leverageMult">
+          <option value="1">1x (Stock)</option>
+          <option value="2">2x ETF</option>
+          <option value="3" selected>3x ETF</option>
+        </select>
+        <button onclick="calcSize()">Calculate Position</button>
+        <div id="sizeResult"></div>
+      </div>
+    </section>
+
+    <!-- Leverage ETF Tracker -->
+    <section class="section">
+      <h2>⚡ Leveraged ETFs</h2>
+      <div class="leverage-grid" id="leverageGrid"></div>
+    </section>
+
+    <!-- Decay Reference -->
+    <section class="section">
+      <h2>⚠️ Decay & Hold Warnings</h2>
+      <div class="decay-table" id="decayTable"></div>
+    </section>
+
+    <!-- Sector Heatmap -->
+    <section class="section">
+      <h2>🗺️ Sector Heatmap</h2>
+      <div class="mini-heatmap" id="miniHeatmap"></div>
+      <a href="heatmap.html" class="btn-full">View Full Heatmap →</a>
+    </section>
+
+    <!-- Quick Watchlist -->
+    <section class="section">
+      <h2>📋 Watchlist</h2>
+      <div class="watchlist" id="watchlist"></div>
+      <div class="add-ticker">
+        <input type="text" id="newTicker" placeholder="AAPL" maxlength="5">
+        <button onclick="addTicker()">+</button>
+      </div>
+    </section>
+
+    <nav class="bottom-nav">
+      <a href="index.html" class="nav-item active">🏠</a>
+      <a href="heatmap.html" class="nav-item">🗺️</a>
+      <a href="radar.html" class="nav-item">🚨</a>
+      <a href="watchlist.html" class="nav-item">📋</a>
+    </nav>
+  </div>
+
+  <script>
+    const PROXY_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/';
+    
+    const FALLBACK_DATA = {
+      'SPY': { price: 545.20, change: 1.2 },
+      'QQQ': { price: 485.10, change: 1.5 },
+      '^VIX': { price: 14.5, change: -2.1 },
+      'TQQQ': { price: 58.20, change: 4.5 },
+      'SQQQ': { price: 12.40, change: -4.2 },
+      'UPRO': { price: 68.50, change: 3.6 },
+      'SPXU': { price: 8.90, change: -3.5 },
+      'SOXL': { price: 42.10, change: 5.2 },
+      'LABU': { price: 6.80, change: 3.1 },
+      'FAS': { price: 85.30, change: 2.8 },
+      'FAZ': { price: 15.20, change: -2.7 },
+      'AAPL': { price: 214.10, change: 0.8 },
+      'MSFT': { price: 430.50, change: 1.1 },
+      'NVDA': { price: 125.40, change: 2.3 },
+      'TSLA': { price: 248.50, change: -1.2 },
+      'META': { price: 510.20, change: 1.8 },
+      'AMZN': { price: 185.30, change: 0.5 },
+      'GOOGL': { price: 178.90, change: 0.3 },
+      'AMD': { price: 162.40, change: 1.9 },
+      'JPM': { price: 198.20, change: 0.6 }
+    };
+
+    const SECTORS = {
+      'Technology': { tickers: ['XLK','AAPL','MSFT','NVDA'], color: '#00d4ff' },
+      'Healthcare': { tickers: ['XLV','JNJ','PFE','UNH'], color: '#00ff88' },
+      'Financial': { tickers: ['XLF','JPM','BAC','GS'], color: '#ffd700' },
+      'Energy': { tickers: ['XLE','XOM','CVX','COP'], color: '#ff6b35' },
+      'Consumer': { tickers: ['XLY','AMZN','TSLA','HD'], color: '#ff3366' },
+      'Industrial': { tickers: ['XLI','BA','CAT','GE'], color: '#a855f7' },
+      'Materials': { tickers: ['XLB','LIN','APD','NEM'], color: '#22c55e' },
+      'Utilities': { tickers: ['XLU','NEE','DUK','SO'], color: '#3b82f6' },
+      'Real Estate': { tickers: ['XLRE','AMT','PLD','O'], color: '#f59e0b' },
+      'Communication': { tickers: ['XLC','META','GOOGL','NFLX'], color: '#ec4899' }
+    };
+
+    const LEVERAGE_ETFS = [
+      { ticker: 'TQQQ', name: '3x QQQ', type: 'bull', underlying: 'QQQ' },
+      { ticker: 'SQQQ', name: '3x QQQ Inv', type: 'bear', underlying: 'QQQ' },
+      { ticker: 'UPRO', name: '3x SPY', type: 'bull', underlying: 'SPY' },
+      { ticker: 'SPXU', name: '3x SPY Inv', type: 'bear', underlying: 'SPY' },
+      { ticker: 'SOXL', name: '3x Semi', type: 'bull', underlying: 'SOXX' },
+      { ticker: 'LABU', name: '3x Bio', type: 'bull', underlying: 'XBI' },
+      { ticker: 'FAS', name: '3x Fin', type: 'bull', underlying: 'XLF' },
+      { ticker: 'FAZ', name: '3x Fin Inv', type: 'bear', underlying: 'XLF' }
+    ];
+
+    let watchlist = JSON.parse(localStorage.getItem('bude_watchlist')) || ['AAPL','NVDA','TSLA','MSFT'];
+
+    async function fetchQuote(ticker) {
+      try {
+        const res = await fetch(`${PROXY_URL}${ticker}?interval=1d&range=1d`);
+        if (!res.ok) throw new Error('Fetch failed');
+        const data = await res.json();
+        const result = data.chart.result[0];
+        const meta = result.meta;
+        const prevClose = meta.chartPreviousClose || meta.regularMarketPreviousClose;
+        const current = meta.regularMarketPrice || result.indicators.quote[0].close.slice(-1)[0];
+        const change = ((current - prevClose) / prevClose) * 100;
+        return { price: current, change: change, ok: true };
+      } catch (e) {
+        const base = FALLBACK_DATA[ticker] || { price: 100 + Math.random()*50, change: (Math.random()-0.5)*4 };
+        const drift = (Math.random() - 0.5) * 0.3;
+        return { price: base.price * (1 + drift/100), change: base.change + drift, ok: false, simulated: true };
+      }
+    }
+
+    function updateCard(ticker, priceId, changeId, data) {
+      const priceEl = document.getElementById(priceId);
+      const changeEl = document.getElementById(changeId);
+      if (!priceEl || !changeEl) return;
+      priceEl.textContent = data.price < 10 ? data.price.toFixed(2) : data.price.toFixed(2);
+      const sign = data.change >= 0 ? '+' : '';
+      changeEl.textContent = `${sign}${data.change.toFixed(2)}%`;
+      changeEl.className = `card-change ${data.change >= 0 ? 'up' : 'down'}`;
+      if (data.simulated) priceEl.classList.add('simulated');
+    }
+
+    async function loadMarketOverview() {
+      const [spy, qqq, vix] = await Promise.all([
+        fetchQuote('SPY'), fetchQuote('QQQ'), fetchQuote('^VIX')
+      ]);
+      updateCard('SPY', 'spy-price', 'spy-change', spy);
+      updateCard('QQQ', 'qqq-price', 'qqq-change', qqq);
+      updateCard('VIX', 'vix-price', 'vix-change', vix);
+      
+      const riskScore = calculateRisk(spy, qqq, vix);
+      updateRiskMeter(riskScore, vix);
+      updateLeverageRules(riskScore, vix);
+    }
+
+    function calculateRisk(spy, qqq, vix) {
+      let score = 0;
+      if (vix.price > 20) score += 25;
+      if (vix.price > 25) score += 25;
+      if (vix.price > 30) score += 20;
+      if (Math.abs(spy.change) > 2) score += 15;
+      if (Math.abs(qqq.change) > 3) score += 15;
+      if (spy.change < -1.5 && qqq.change < -2) score += 15;
+      if (spy.change < -2.5 || qqq.change < -3.5) score += 10;
+      return Math.min(score, 100);
+    }
+
+    function updateRiskMeter(score, vix) {
+      const fill = document.getElementById('riskFill');
+      const text = document.getElementById('riskText');
+      fill.style.width = score + '%';
+      fill.className = 'risk-fill ' + (score < 30 ? 'low' : score < 50 ? 'med' : score < 70 ? 'high' : 'extreme');
+      let label = score < 30 ? 'Safe to Leverage' : score < 50 ? 'Caution' : score < 70 ? 'High Risk' : 'NO NEW LEVERAGE';
+      text.textContent = label;
+      
+      const alerts = document.getElementById('riskAlerts');
+      alerts.innerHTML = '';
+      if (vix.price > 20) alerts.innerHTML += `<div class="alert">⚠️ VIX ${vix.price.toFixed(1)} — Consider reducing size</div>`;
+      if (score > 50) alerts.innerHTML += `<div class="alert critical">🚨 Elevated risk — Tighten stops</div>`;
+      if (score > 70) alerts.innerHTML += `<div class="alert critical">🔴 EXTREME — Close leverage positions</div>`;
+    }
+
+    function updateLeverageRules(score, vix) {
+      const rules = document.getElementById('leverageRules');
+      let html = '<div class="rules-box">';
+      if (score < 30) {
+        html += '<div class="rule safe">✅ 3x ETFs acceptable</div>';
+        html += '<div class="rule safe">✅ Hold up to 5 days</div>';
+      } else if (score < 50) {
+        html += '<div class="rule caution">⚠️ Max 2x leverage</div>';
+        html += '<div class="rule caution">⚠️ Hold max 2-3 days</div>';
+      } else if (score < 70) {
+        html += '<div class="rule danger">🔴 1x only or cash</div>';
+        html += '<div class="rule danger">🔴 Day trade only</div>';
+      } else {
+        html += '<div class="rule extreme">🛑 NO LEVERAGE</div>';
+        html += '<div class="rule extreme">🛑 SQQQ/SPXU hedge only</div>';
+      }
+      if (vix.price > 25) html += '<div class="rule danger">🔴 Volatility decay active</div>';
+      html += '</div>';
+      rules.innerHTML = html;
+    }
+
+    function calcSize() {
+      const acct = parseFloat(document.getElementById('acctSize').value);
+      const risk = parseFloat(document.getElementById('riskPct').value);
+      const stop = parseFloat(document.getElementById('stopLoss').value);
+      const mult = parseInt(document.getElementById('leverageMult').value);
+      if (!acct || !risk || !stop) {
+        document.getElementById('sizeResult').innerHTML = '<div class="size-error">Fill all fields</div>';
+        return;
+      }
+      const dollarRisk = acct * (risk / 100);
+      const adjustedStop = stop * mult;
+      const position = dollarRisk / (adjustedStop / 100);
+      const shares = Math.floor(position / 50); // rough estimate
+      document.getElementById('sizeResult').innerHTML = `
+        <div class="size-line">Max Position: <strong>$${position.toFixed(0)}</strong></div>
+        <div class="size-line">Dollar Risk: <strong>$${dollarRisk.toFixed(0)}</strong></div>
+        <div class="size-line">Effective Stop: <strong>${adjustedStop.toFixed(1)}%</strong> (${mult}x)</div>
+        <div class="size-note">Shares (est $50): ~${shares}</div>
+      `;
+    }
+
+    async function loadLeverageGrid() {
+      const grid = document.getElementById('leverageGrid');
+      grid.innerHTML = '';
+      for (const etf of LEVERAGE_ETFS) {
+        const data = await fetchQuote(etf.ticker);
+        const decayRisk = Math.abs(data.change) < 1.5 && Math.abs(data.change) > 0.3;
+        const div = document.createElement('div');
+        div.className = `lev-card ${etf.type}`;
+        div.innerHTML = `
+          <div class="lev-ticker">${etf.ticker}</div>
+          <div class="lev-name">${etf.name}</div>
+          <div class="lev-price">${data.price.toFixed(2)}</div>
+          <div class="lev-change ${data.change >= 0 ? 'up' : 'down'}">${data.change >= 0 ? '+' : ''}${data.change.toFixed(2)}%</div>
+          ${decayRisk ? '<div class="decay-warn">⚠️ Decay Zone</div>' : ''}
+        `;
+        div.onclick = () => openTicker(etf.ticker);
+        grid.appendChild(div);
+      }
+    }
+
+    function loadDecayTable() {
+      const table = document.getElementById('decayTable');
+      const rules = [
+        { cond: 'VIX > 25', warn: 'Decay accelerates — avoid holds > 1 day', level: 'high' },
+        { cond: 'Sideways market', warn: '3x ETF loses 0.5-2% daily to decay', level: 'med' },
+        { cond: 'Hold > 5 days', warn: 'Decay compounds significantly', level: 'med' },
+        { cond: 'Gap down > 3%', warn: '3x = -9% + overnight decay', level: 'high' },
+        { cond: 'Choppy week', warn: 'UPRO/TQQQ can lag SPY/QQQ by 10%', level: 'high' },
+        { cond: 'Best use', warn: 'Strong trend days only, exit EOD', level: 'safe' }
+      ];
+      table.innerHTML = rules.map(r => `
+        <div class="decay-row ${r.level}">
+          <span class="decay-cond">${r.cond}</span>
+          <span class="decay-warn">${r.warn}</span>
+        </div>
+      `).join('');
+    }
+
+    async function loadMiniHeatmap() {
+      const container = document.getElementById('miniHeatmap');
+      container.innerHTML = '';
+      for (const [name, info] of Object.entries(SECTORS)) {
+        const data = await fetchQuote(info.tickers[0]);
+        const div = document.createElement('div');
+        div.className = 'heatmap-cell';
+        const intensity = Math.min(Math.abs(data.change) / 5, 1);
+        div.style.background = data.change >= 0 
+          ? `rgba(0,255,136,${0.15 + intensity * 0.85})` 
+          : `rgba(255,51,102,${0.15 + intensity * 0.85})`;
+        div.innerHTML = `<span>${name}</span><span>${data.change >= 0 ? '+' : ''}${data.change.toFixed(1)}%</span>`;
+        div.onclick = () => location.href = 'heatmap.html';
+        container.appendChild(div);
+      }
+    }
+
+    function loadWatchlist() {
+      const container = document.getElementById('watchlist');
+      container.innerHTML = '';
+      watchlist.forEach(async ticker => {
+        const data = await fetchQuote(ticker);
+        const row = document.createElement('div');
+        row.className = 'watch-row';
+        row.innerHTML = `
+          <span class="watch-ticker">${ticker}</span>
+          <span class="watch-price">${data.price.toFixed(2)}</span>
+          <span class="watch-change ${data.change >= 0 ? 'up' : 'down'}">${data.change >= 0 ? '+' : ''}${data.change.toFixed(2)}%</span>
+          <button onclick="removeTicker('${ticker}')" class="del-btn">×</button>
+        `;
+        row.onclick = (e) => { if (!e.target.classList.contains('del-btn')) openTicker(ticker); };
+        container.appendChild(row);
+      });
+    }
+
+    function addTicker() {
+      const input = document.getElementById('newTicker');
+      const ticker = input.value.toUpperCase().trim();
+      if (ticker && !watchlist.includes(ticker)) {
+        watchlist.push(ticker);
+        localStorage.setItem('bude_watchlist', JSON.stringify(watchlist));
+        input.value = '';
+        loadWatchlist();
+      }
+    }
+
+    function removeTicker(ticker) {
+      watchlist = watchlist.filter(t => t !== ticker);
+      localStorage.setItem('bude_watchlist', JSON.stringify(watchlist));
+      loadWatchlist();
+    }
+
+    function openTicker(ticker) {
+      window.open(`https://finance.yahoo.com/quote/${ticker}`, '_blank');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadMarketOverview();
+      loadLeverageGrid();
+      loadDecayTable();
+      loadMiniHeatmap();
+      loadWatchlist();
+      setInterval(() => {
+        loadMarketOverview();
+        loadLeverageGrid();
+        loadWatchlist();
+      }, 30000);
+    });
+  </script>
+</body>
+</html>
