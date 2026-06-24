@@ -1,0 +1,65 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #0b0f14;
+  color: white;
+}
+
+header {
+  text-align: center;
+  padding: 12px;
+  background: #111826;
+}
+
+nav {
+  display: flex;
+  justify-content: space-around;
+  background: #0f1722;
+  padding: 10px;
+}
+
+button {
+  background: #1e293b;
+  color: white;
+  border: none;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+button:hover {
+  background: #334155;
+}
+
+.tab {
+  display: none;
+  padding: 10px;
+}
+
+.tab.active {
+  display: block;
+}
+
+#heatmapChart {
+  width: 100%;
+  height: 70vh;
+}
+
+.card {
+  background: #111827;
+  padding: 10px;
+  margin: 8px 0;
+  border-radius: 10px;
+}
+
+.strong-up { color: #00ff88; }
+.weak-up { color: #7CFC90; }
+.weak-down { color: #ffb347; }
+.strong-down { color: #ff3b3b; }
+
+input {
+  width: 70%;
+  padding: 10px;
+  margin: 5px;
+  border-radius: 8px;
+  border: none;
+}
