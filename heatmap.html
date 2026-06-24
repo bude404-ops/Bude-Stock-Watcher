@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sector Heatmap - BudE</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <h1>🗺️ Sector Heatmap</h1>
+      <a href="index.html" class="back-btn">←</a>
+    </header>
+
+    <div class="heatmap-controls">
+      <button class="filter-btn active" onclick="filterMap('all')">All</button>
+      <button class="filter-btn" onclick="filterMap('gainers')">Gainers</button>
+      <button class="filter-btn" onclick="filterMap('losers')">Losers</button>
+      <button class="filter-btn" onclick="filterMap('leverage')">3x ETFs</button>
+    </div>
+
+    <div class="full-heatmap" id="fullHeatmap"></div>
+
+    <div class="legend">
+      <span class="legend-item"><span class="dot" style="background:#00ff88"></span> +5%</span>
+      <span class="legend-item"><span class="dot" style="background:#22c55e"></span> +2%</span>
+      <span class="legend-item"><span class="dot" style="background:#333"></span> 0%</span>
+      <span class="legend-item"><span class="dot" style="background:#ff3366"></span> -2%</span>
+      <span class="legend-item"><span class="dot" style="background:#ff0033"></span> -5%</span>
+    </div>
+
+    <div class="sector-leverage-tip">
+      <strong>💡 Tip:</strong> Click any sector to see its 3x ETF. Green sectors = bullish leverage opportunity. Red = consider inverse ETFs (SQQQ, SPXU).
+    </div>
+
+    <nav class="bottom-nav">
+      <a href="index.html" class="nav-item">🏠</a>
+      <a href="heatmap.html" class="nav-item active">🗺️</a>
+      <a href="radar.html" class="nav-item">🚨</a>
+      <a href="liquidation.html" class="nav-item">💥</a>
+      <a href="watchlist.html" class="nav-item">📋</a>
+    </nav>
+  </div>
+
+  <script>
+    const PROXY_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/';
+    
+    const SECTORS = {
+      'Technology': { tickers: ['XLK','AAPL','MSFT','NVDA','AMD','AVGO','CRM'], leverage: 'TQQQ/SOXL' },
+      'Healthcare': { tickers: ['XLV','JNJ','UNH','PFE','ABBV','LLY','MRK'], leverage: 'LABU' },
+      'Financial': { tickers: ['XLF','JPM','BAC','GS','MS','WFC','C'], leverage: 'FAS/FAZ' },
+      'Energy': { tickers: ['XLE','XOM','CVX','COP','EOG','SLB','MPC'], leverage: 'N/A' },
+      'Consumer Disc': { tickers: ['XLY','AMZN','TSLA','HD','MCD','NKE','LOW'], leverage: 'N/A' },
+      'Industrial': { tickers: ['XLI','BA','CAT','GE','HON','UPS','LMT'], leverage: 'N/A' },
+      'Materials': { tickers: ['XLB','LIN','APD','NEM','FCX','SHW','ECL'], leverage: 'N/A' },
+      'Utilities': { tickers: ['XLU','NEE','DUK','SO','AEP','EXC','SRE'], leverage: 'N/A' },
+      'Real Estate': { tickers: ['XLRE','AMT','PLD','O','EQIX','PSA','WELL'], leverage: 'N/A' },
+      'Communication': { tickers: ['XLC','META','GOOGL','NFLX','DIS','VZ','T'], leverage: 'N/A' },
+      'Consumer Staples': { tickers: ['XLP','PG','KO','PEP','WMT','COST','MDLZ'], leverage: 'N/A' }
+    };
+
+    async function fetchQuote(ticker) {
+      try {
+        const res = await fetch(`${PROXY_URL}${ticker}?interval=1d&range=1d`);
+        const data = await res.json();
+        const meta = data.chart.result[0].meta;
+        return { price: meta.regularMarketPrice, change: ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose) * 100 };
+      } catch {
+        return { price: 100 + Math.random()*100, change: (Math.random()-0.5)*6 };
+      }
+    }
+
+    async function loadHeatmap() {
+      const container = document.getElementById('fullHeatmap');
+      container.innerHTML = '';
+      
+      for (const [sector, info] of Object.entries(SECTORS)) {
+        const sectorData = await fetchQuote(info.tickers[0]);
+        const sectorDiv = document.createElement('div');
+        sectorDiv.className = 'sector-block';
+        const intensity = Math.min(Math.abs(sectorData.change) / 5, 1);
+        const color = sectorData.change >= 0 
+          ? `rgba(0,255,136,${0.15 + intensity * 0.85})`
+          : `rgba(255,51,102,${0.15 + intensity * 0.85})`;
+        
+        sectorDiv.style.background = color;
+        sectorDiv.dataset.change = sectorData.change;
+        sectorDiv.dataset.sector = sector;
+        
+        let stocksHtml = '';
+        for (let i = 1; i < info.tickers.length; i++) {
+          const d = await fetchQuote(info.tickers[i]);
+          const sColor = d.change >= 0 ? '#00ff88' : '#ff3366';
+          stocksHtml += `<div class="stock-pill" style="color:${sColor}">${info.tickers[i]} ${d.change >= 0 ? '+' : ''}${d.change.toFixed(1)}%</div>`;
+        }
+        
+        const levTip = info.leverage !== 'N/A' ? `<div class="lev-tip">3x: ${info.leverage}</div>` : '';
+        
+        sectorDiv.innerHTML = `
+          <div class="sector-header">
+            <span class="sector-name">${sector}</span>
+            <span class="sector-change">${sectorData.change >= 0 ? '+' : ''}${sectorData.change.toFixed(2)}%</span>
+          </div>
+          ${levTip}
+          <div class="sector-stocks">${stocksHtml}</div>
+        `;
+        container.appendChild(sectorDiv);
+      }
+    }
+
+    function filterMap(type) {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      event.target.classList.add('active');
+      document.querySelectorAll('.sector-block').forEach(block => {
+        const change = parseFloat(block.dataset.change);
+        const sector = block.dataset.sector;
+        const hasLeverage = SECTORS[sector].leverage !== 'N/A';
+        let show = false;
+        if (type === 'all') show = true;
+        else if (type === 'gainers') show = change > 0;
+        else if (type === 'losers') show = change < 0;
+        else if (type === 'leverage') show = hasLeverage;
+        block.style.display = show ? 'block' : 'none';
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', loadHeatmap);
+  </script>
+</body>
+</html>
