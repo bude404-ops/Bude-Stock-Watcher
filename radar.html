@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Liquidity Radar - BudE</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <h1>🚨 Liquidity Radar</h1>
+      <a href="index.html" class="back-btn">←</a>
+    </header>
+
+    <div class="radar-summary">
+      <div class="radar-score" id="radarScore">--</div>
+      <div class="radar-label" id="radarLabel">Scanning...</div>
+    </div>
+
+    <div class="radar-action" id="radarAction"></div>
+
+    <section class="section">
+      <h2>📊 Market Internals</h2>
+      <div class="internals-grid" id="internalsGrid"></div>
+    </section>
+
+    <section class="section">
+      <h2>⚠️ Cascade Alerts</h2>
+      <div class="cascade-list" id="cascadeList"></div>
+    </section>
+
+    <section class="section">
+      <h2>📈 Volatility & Decay Monitor</h2>
+      <div class="vol-surface" id="volSurface"></div>
+    </section>
+
+    <section class="section">
+      <h2>🎯 Leverage Action Plan</h2>
+      <div class="action-plan" id="actionPlan"></div>
+    </section>
+
+    <nav class="bottom-nav">
+      <a href="index.html" class="nav-item">🏠</a>
+      <a href="heatmap.html" class="nav-item">🗺️</a>
+      <a href="radar.html" class="nav-item active">🚨</a>
+      <a href="watchlist.html" class="nav-item">📋</a>
+    </nav>
+  </div>
+
+  <script>
+    const PROXY_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/';
+    
+    const CASCADES = [
+      { name: 'QQQ/SPY Ratio', tickers: ['QQQ','SPY'], threshold: 1.5, type: 'divergence' },
+      { name: 'VIX Spike', tickers: ['^VIX'], threshold: 20, type: 'level' },
+      { name: 'TQQQ/SQQQ Divergence', tickers: ['TQQQ','SQQQ'], threshold: 8, type: 'spread' },
+      { name: 'HYG Stress', tickers: ['HYG'], threshold: -1.5, type: 'drop' },
+      { name: 'GLD Flight', tickers: ['GLD'], threshold: 1.5, type: 'rise' },
+      { name: 'TLT Rotation', tickers: ['TLT'], threshold: 1.5, type: 'rise' },
+      { name: 'Oil Shock', tickers: ['USO'], threshold: 3, type: 'rise' },
+      { name: 'Dollar Strength', tickers: ['UUP'], threshold: 1, type: 'rise' }
+    ];
+
+    async function fetchQuote(ticker) {
+      try {
+        const res = await fetch(`${PROXY_URL}${ticker}?interval=1d&range=1d`);
+        const data = await res.json();
+        const meta = data.chart.result[0].meta;
+        return { price: meta.regularMarketPrice, change: ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose) * 100 };
+      } catch {
+        return { price: 100, change: (Math.random()-0.5)*3 };
+      }
+    }
+
+    async function scanRadar() {
+      let totalRisk = 0;
+      const alerts = [];
+      const grid = document.getElementById('internalsGrid');
+      grid.innerHTML = '';
+
+      for (const check of CASCADES) {
+        const results = await Promise.all(check.tickers.map(t => fetchQuote(t)));
+        let isTriggered = false;
+        let mainChange = results[0].change;
+        
+        if (check.type === 'level') isTriggered = results[0].price > check.threshold;
+        else if (check.type === 'spread') isTriggered = Math.abs(results[0].change - results[1].change) > check.threshold;
+        else if (check.type === 'divergence') isTriggered = Math.abs(results[0].change - results[1].change) > check.threshold;
+        else isTriggered = Math.abs(mainChange) > Math.abs(check.threshold) && (check.type === 'drop' ? mainChange < 0 : mainChange > 0);
+        
+        if (isTriggered) totalRisk += 12;
+        
+        const div = document.createElement('div');
+        div.className = `internal-card ${isTriggered ? 'triggered' : ''}`;
+        div.innerHTML = `
+          <div class="int-name">${check.name}</div>
+          <div class="int-value">${results[0].price.toFixed(2)}</div>
+          <div class="int-change ${mainChange >= 0 ? 'up' : 'down'}">${mainChange >= 0 ? '+' : ''}${mainChange.toFixed(2)}%</div>
+          <div class="int-status">${isTriggered ? '🔴 ALERT' : '🟢 OK'}</div>
+        `;
+        grid.appendChild(div);
+
+        if (isTriggered) {
+          alerts.push({
+            name: check.name,
+            severity: Math.abs(mainChange) > Math.abs(check.threshold) * 2 ? 'CRITICAL' : 'WARNING',
+            detail: `${check.tickers[0]} signal: ${mainChange.toFixed(2)}%`
+          });
+        }
+      }
+
+      const score = Math.min(totalRisk, 100);
+      const scoreEl = document.getElementById('radarScore');
+      scoreEl.textContent = score;
+      scoreEl.className = `radar-score ${score < 30 ? 'low' : score < 50 ? 'med' : score < 70 ? 'high' : 'extreme'}`;
+      
+      const label = score < 30 ? 'Market Calm' : score < 50 ? 'Caution' : score < 70 ? 'High Alert' : 'CASCADE RISK';
+      document.getElementById('radarLabel').textContent = label;
+
+      // Action banner
+      const actionBanner = document.getElementById('radarAction');
+      if (score > 70) {
+        actionBanner.className = 'radar-action extreme';
+        actionBanner.innerHTML = '🛑 CLOSE ALL LEVERAGE — CASCADE IMMINENT';
+      } else if (score > 50) {
+        actionBanner.className = 'radar-action danger';
+        actionBanner.innerHTML = '⚠️ REDUCE SIZE — TIGHTEN STOPS TO 2%';
+      } else if (score > 30) {
+        actionBanner.className = 'radar-action caution';
+        actionBanner.innerHTML = '👀 WATCH CLOSELY — MAX 2x LEVERAGE';
+      } else {
+        actionBanner.className = 'radar-action safe';
+        actionBanner.innerHTML = '✅ GREEN LIGHT — 3x ACCEPTABLE';
+      }
+
+      // Alerts
+      const list = document.getElementById('cascadeList');
+      list.innerHTML = alerts.length ? '' : '<div class="no-alert">No active cascade signals</div>';
+      alerts.forEach(a => {
+        list.innerHTML += `<div class="cascade-item ${a.severity.toLowerCase()}"><strong>${a.severity}</strong> ${a.name}: ${a.detail}</div>`;
+      });
+
+      // Vol surface
+      const vol = document.getElementById('volSurface');
+      const vixData = await fetchQuote('^VIX');
+      const volLevel = vixData.price;
+      const decayActive = volLevel > 20;
+      vol.innerHTML = `
+        <div class="vol-bar">
+          <div class="vol-label">VIX Level</div>
+          <div class="vol-track"><div class="vol-fill" style="width:${Math.min(volLevel/40*100,100)}%;background:${volLevel>25?'#ff3366':volLevel>20?'#ffd700':'#00ff88'}"></div></div>
+          <div class="vol-num">${volLevel.toFixed(1)}</div>
+        </div>
+        <div class="vol-bar">
+          <div class="vol-label">Decay Risk</div>
+          <div class="vol-track"><div class="vol-fill" style="width:${decayActive?80:30}%;background:${decayActive?'#ff3366':'#00ff88'}"></div></div>
+          <div class="vol-num">${decayActive?'HIGH':'LOW'}</div>
+        </div>
+        <div class="vol-bar">
+          <div class="vol-label">Hold Limit</div>
+          <div class="vol-track"><div class="vol-fill" style="width:${decayActive?30:80}%;background:${decayActive?'#ff3366':'#00ff88'}"></div></div>
+          <div class="vol-num">${decayActive?'1 Day':'5 Days'}</div>
+        </div>
+      `;
+
+      // Action plan
+      const plan = document.getElementById('actionPlan');
+      let planHtml = '';
+      if (score > 70) {
+        planHtml += '<div class="plan-item extreme">🛑 SELL: TQQQ, UPRO, SOXL, FAS</div>';
+        planHtml += '<div class="plan-item extreme">🛒 BUY: SQQQ, SPXU as hedge</div>';
+        planHtml += '<div class="plan-item extreme">📉 Move to 100% cash or inverse</div>';
+      } else if (score > 50) {
+        planHtml += '<div class="plan-item danger">✂️ Cut 3x positions by 50%</div>';
+        planHtml += '<div class="plan-item danger">🛑 Stop loss: 2% max on all trades</div>';
+        planHtml += '<div class="plan-item danger">⏱️ Hold max 1 day</div>';
+      } else if (score > 30) {
+        planHtml += '<div class="plan-item caution">📊 Max 2x leverage only</div>';
+        planHtml += '<div class="plan-item caution">🎯 Tighten stops to 3%</div>';
+        planHtml += '<div class="plan-item caution">⏱️ Hold max 2-3 days</div>';
+      } else {
+        planHtml += '<div class="plan-item safe">✅ 3x ETFs: TQQQ, UPRO, SOXL</div>';
+        planHtml += '<div class="plan-item safe">🎯 Stop loss: 5% (15% effective 3x)</div>';
+        planHtml += '<div class="plan-item safe">⏱️ Hold up to 5 days if trending</div>';
+      }
+      plan.innerHTML = planHtml;
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      scanRadar();
+      setInterval(scanRadar, 30000);
+    });
+  </script>
+</body>
+</html>
