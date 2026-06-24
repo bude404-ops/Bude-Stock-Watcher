@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BudE Heatmap Radar</title>
+  <link rel="stylesheet" href="styles.css"/>
+  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+</head>
+
+<body>
+  <header>
+    <h1>🔥 BudE Heatmap Radar</h1>
+    <p>Leverage + Liquidity + Momentum Engine</p>
+  </header>
+
+  <nav>
+    <button onclick="setTab('heatmap')">Heatmap</button>
+    <button onclick="setTab('risk')">Risk Radar</button>
+    <button onclick="setTab('watch')">Watchlist</button>
+  </nav>
+
+  <main>
+
+    <!-- HEATMAP -->
+    <section id="heatmap" class="tab active">
+      <div id="heatmapChart"></div>
+    </section>
+
+    <!-- RISK -->
+    <section id="risk" class="tab">
+      <h2>🔥 Liquidity Cascade Radar</h2>
+      <div id="riskList"></div>
+    </section>
+
+    <!-- WATCHLIST -->
+    <section id="watch" class="tab">
+      <h2>⭐ Watchlist</h2>
+      <input id="watchInput" placeholder="Add ticker (AAPL)" />
+      <button onclick="addWatch()">Add</button>
+      <div id="watchList"></div>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>Free Data • Educational Use Only</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
